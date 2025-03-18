@@ -22,18 +22,58 @@ export function getErrorCorrectionLevel(content: string): ErrorCorrectionLevel {
 export function loadImage(
   logoSrc: string,
   crossOrigin: string
-): Promise<HTMLImageElement> {
-  const image = new Image()
-  image.setAttribute('crossOrigin', crossOrigin || 'anonymous')
-  image.src = logoSrc
-  return new Promise((resolve, reject) => {
-    image.onload = () => {
-      resolve(image)
-    }
-    image.onerror = () => {
-      reject('logo load fail!')
-    }
-  })
+): Promise<HTMLImageElement | any> {
+  const isNode = typeof window === 'undefined';
+  
+  if (isNode) {
+    // Node.js implementation using canvas package
+    const { Image } = require('canvas');
+    const fs = require('fs');
+    const path = require('path');
+    
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      
+      // Check if logoSrc is a URL or local file path
+      if (logoSrc.startsWith('http://') || logoSrc.startsWith('https://')) {
+        // For URLs, we need to use a HTTP client
+        const fetch = require('node-fetch');
+        
+        fetch(logoSrc)
+          .then(response => response.buffer())
+          .then(buffer => {
+            image.onload = () => resolve(image);
+            image.onerror = () => reject('logo load fail!');
+            image.src = buffer;
+          })
+          .catch(err => reject(err));
+      } else {
+        // For local files
+        try {
+          // Assume logoSrc is a file path
+          const buffer = fs.readFileSync(path.resolve(logoSrc));
+          image.onload = () => resolve(image);
+          image.onerror = () => reject('logo load fail!');
+          image.src = buffer;
+        } catch (err) {
+          reject(err);
+        }
+      }
+    });
+  } else {
+    // Browser implementation
+    const image = new Image();
+    image.setAttribute('crossOrigin', crossOrigin || 'anonymous');
+    image.src = logoSrc;
+    return new Promise((resolve, reject) => {
+      image.onload = () => {
+        resolve(image);
+      };
+      image.onerror = () => {
+        reject('logo load fail!');
+      };
+    });
+  }
 }
 
 /**
@@ -77,23 +117,30 @@ export function isFunction(o: any): boolean {
 export const toImage = async function (options: BaseOptions) {
   let { canvas, download } = options
   const { image, downloadName } = options
+  const isNode = typeof window === 'undefined';
+  
   if (canvas!.toDataURL()) {
     image!.src = canvas!.toDataURL()
   } else {
     throw new Error('Can not get the canvas DataURL')
   }
+  
   if (download !== true && !isFunction(download)) {
     return
   }
+  
   // download also can be a function
   download =
     download === true ? (start: Function): Promise<void> => start() : download
+  
   const startDownload = () => {
     return saveImage(image!, downloadName)
   }
+  
   if (download) {
     return download(startDownload)
   }
+  
   return Promise.resolve()
 }
 
@@ -104,21 +151,38 @@ export const toImage = async function (options: BaseOptions) {
  * @returns
  */
 export const saveImage = (
-  image: HTMLImageElement,
+  image: HTMLImageElement | any,
   name: string
 ): Promise<boolean> => {
   return new Promise((resolve, reject) => {
     try {
-      const dataURL = image.src
-      const link = document.createElement('a')
-      link.download = name
-      link.href = dataURL
-      link.dispatchEvent(new MouseEvent('click'))
-      resolve(true)
+      const isNode = typeof window === 'undefined';
+      
+      if (isNode) {
+        // Node.js implementation
+        const fs = require('fs');
+        const dataURL = image.src;
+        // Convert base64 to buffer
+        const base64Data = dataURL.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        
+        fs.writeFile(name, buffer, (err) => {
+          if (err) reject(err);
+          else resolve(true);
+        });
+      } else {
+        // Browser implementation
+        const dataURL = image.src;
+        const link = document.createElement('a');
+        link.download = name;
+        link.href = dataURL;
+        link.dispatchEvent(new MouseEvent('click'));
+        resolve(true);
+      }
     } catch (err) {
-      reject(err)
+      reject(err);
     }
-  })
+  });
 }
 
 /**
@@ -155,5 +219,14 @@ export function isString(o: any): boolean {
  * @param o image dom 節點
  */
 export function isImageDom(o: any): boolean {
-  return o && ['IMAGE', 'IMG'].includes(o.tagName)
+  const isNode = typeof window === 'undefined';
+  
+  if (isNode) {
+    // For Node.js environment
+    const { Image } = require('canvas');
+    return o instanceof Image;
+  }
+  
+  // For browser environment
+  return o && ['IMAGE', 'IMG'].includes(o.tagName);
 }

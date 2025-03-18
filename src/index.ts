@@ -45,9 +45,29 @@ class QrCodeWithLogo {
   constructor(options: BaseOptions) {
     try {
       this.options = Object.assign(this.defaultOption, options)
-      if (!this.options.canvas)
-        this.options.canvas = document.createElement('canvas')
-      if (!this.options.image) this.options.image = document.createElement('img')
+      // Check if we're in a browser or Node environment
+      const isNode = typeof window === 'undefined';
+      
+      if (!this.options.canvas) {
+        if (isNode) {
+          // For Node.js, use node-canvas
+          const { createCanvas } = require('canvas');
+          this.options.canvas = createCanvas(this.options.width, this.options.width);
+        } else {
+          this.options.canvas = document.createElement('canvas');
+        }
+      }
+      
+      if (!this.options.image) {
+        if (isNode) {
+          // For Node.js, use node-canvas
+          const { Image } = require('canvas');
+          this.options.image = new Image();
+        } else {
+          this.options.image = document.createElement('img');
+        }
+      }
+      
       this._toCanvas()
         .then(() => {
           return this._toImage()
